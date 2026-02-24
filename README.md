@@ -1,2 +1,4 @@
-# home-server
-Repository for my home server project
+# HomeLab
+
+This repository hosts the inventory, configuration and planning for my home setup.
+
