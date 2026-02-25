@@ -58,3 +58,9 @@ Storage: Configure LVM-Thin for VM disks and ZFS (optional) for data integrity.
 
 K3S Control Plane node.
 
+
+#### Networking
+
+![networking](Networking.drawio.png "Networking")
+
+
