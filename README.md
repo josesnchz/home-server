@@ -20,12 +20,12 @@ For that purpose, the hardware that it will use:
 * PSU: Nox Urano VX 750W
 * Storage: 1TB SATA SSD 
 
-#### Host #2 
+#### Host #2
 
 Consists on a Raspberry Pi5/4GB acting as the management layer (Orchestration, Monitoring, and Core Services).
 
 
-#### Networking
+#### Networking
 
 The components that will be used to connect all different hosts:
 * Switch Mercusys MS105G
@@ -34,7 +34,7 @@ The components that will be used to connect all different hosts:
 
 ## The Setup
 
-#### Host #1 Configuration
+#### Host #1 Configuration
 
 Uses Proxmox VE as the base Type-1 Hypervisor. Using 50GB dedicated for the system and reserving two cores for it.
 
@@ -53,6 +53,8 @@ Storage: Configure LVM-Thin for VM disks and ZFS (optional) for data integrity.
 * FileSystem: LVM-Thin for higher performance.
 * Passthrough to Node 1.
 
-#### Host #2 Configuration
+  
+#### Host #2 Configuration
 
 K3S Control Plane node.
+
