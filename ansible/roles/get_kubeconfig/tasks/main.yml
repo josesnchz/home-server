@@ -1,0 +1,31 @@
+---
+- name: Check remote kubeconfig exists
+  ansible.builtin.stat:
+    path: "{{ get_kubeconfig_remote_path }}"
+  register: get_kubeconfig_remote_stat
+
+- name: Stop if kubeconfig does not exist on master
+  ansible.builtin.fail:
+    msg: "Kubeconfig not found at {{ get_kubeconfig_remote_path }}. Run k8s_setup.yml first."
+  when: not get_kubeconfig_remote_stat.stat.exists
+
+- name: Ensure local kubeconfig directory exists
+  ansible.builtin.file:
+    path: "{{ get_kubeconfig_local_path | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Fetch kubeconfig from master
+  ansible.builtin.fetch:
+    src: "{{ get_kubeconfig_remote_path }}"
+    dest: "{{ get_kubeconfig_local_path }}"
+    flat: true
+
+- name: Restrict local kubeconfig permissions
+  ansible.builtin.file:
+    path: "{{ get_kubeconfig_local_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false

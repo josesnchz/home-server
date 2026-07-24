@@ -8,9 +8,9 @@ The main philosophy of this project is to maintain a high-performance environmen
 
 This project will use the following hardware.
 
-#### Host #1 
+#### Endurance Host
 
-This is the computing host. This host is responsible of doing most of the intense computing tasks. 
+This is the main computing host. This host is responsible of doing most of the intense computing tasks.
 
 For that purpose, the hardware that it will use:
 * MB: Machinist X99 RS9
@@ -62,5 +62,4 @@ K3S Control Plane node.
 #### Networking
 
 ![networking](Networking.drawio.png "Networking")
-
 

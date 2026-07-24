@@ -1,0 +1,3 @@
+proxmox_api_token_id     = "terraform-user@pam!terraform-token-1"
+proxmox_api_token_secret = "replace-me"
+ssh_public_key           = "ssh-rsa replace-me"

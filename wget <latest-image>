@@ -1,0 +1,16 @@
+wget <latest-image>
+GUI: Create VM with no disk: template-debian13-cloud-init
+qm importdisk 750 template/debian-12-genericcloud-amd64.qcow2 habitat
+GUI: Add disk as virtio to machine
+GUI: Add Cloud Init Drive with IDE as default, this allows to login later
+GUI: Add EFI disk just in case
+GUI: Boot order in options, our disk
+apt update && apt install -y \
+    qemu-guest-agent curl wget nano rsync htop \
+    dnsutils iputils-ping net-tools mtr-tiny socat tcpdump \
+    nfs-common open-iscsi iptables ca-certificates gnupg \
+    bash-completion git sudo lsb-release
+apt update && apt install -y cloud-guest-utils bridge-utils conntrack sudo
+sudo truncate -s 0 /etc/machine-id
+sudo rm /var/lib/dbus/machine-id
+sudo ln -s /etc/machine-id /var/lib/dbus/machine-id

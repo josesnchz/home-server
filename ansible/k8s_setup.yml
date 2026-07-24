@@ -1,0 +1,327 @@
+---
+- name: Prepare Kubernetes nodes
+  hosts: k8s_cluster
+  become: true
+  gather_facts: true
+  handlers:
+    - name: Restart containerd
+      ansible.builtin.service:
+        name: containerd
+        state: restarted
+
+    - name: Restart kubelet
+      ansible.builtin.service:
+        name: kubelet
+        state: restarted
+      failed_when: false
+
+    - name: Reload sysctl
+      ansible.builtin.command: sysctl --system
+      changed_when: true
+
+  tasks:
+    - name: Set hostnames to inventory names
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Add cluster hosts to /etc/hosts
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE K8S HOSTS"
+        block: |
+          {% for host in groups['k8s_cluster'] %}
+          {{ hostvars[host].node_ip | default(hostvars[host].ansible_host) }} {{ host }}
+          {% endfor %}
+
+    - name: Disable swap immediately
+      ansible.builtin.command: swapoff -a
+      when: ansible_swaptotal_mb | int > 0
+      changed_when: true
+
+    - name: Disable swap persistently
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\s+swap\s+.*)$'
+        replace: '# \1'
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+          - gnupg
+          - python3-apt
+          - containerd
+        state: present
+        update_cache: true
+
+    - name: Load Kubernetes kernel modules on boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Load overlay module
+      ansible.builtin.command: modprobe overlay
+      changed_when: false
+
+    - name: Load br_netfilter module
+      ansible.builtin.command: modprobe br_netfilter
+      changed_when: false
+
+    - name: Configure Kubernetes sysctl values
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+      notify: Reload sysctl
+
+    - name: Create containerd config directory
+      ansible.builtin.file:
+        path: /etc/containerd
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Render default containerd config
+      ansible.builtin.command: containerd config default
+      changed_when: false
+      register: containerd_default_config
+
+    - name: Configure containerd for systemd cgroups
+      ansible.builtin.copy:
+        dest: /etc/containerd/config.toml
+        owner: root
+        group: root
+        mode: "0644"
+        content: "{{ containerd_default_config.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}"
+      notify: Restart containerd
+
+    - name: Enable containerd
+      ansible.builtin.service:
+        name: containerd
+        enabled: true
+        state: started
+
+    - name: Create apt keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download Kubernetes apt signing key
+      ansible.builtin.get_url:
+        url: "{{ kubernetes_apt_key_url }}"
+        dest: /tmp/kubernetes-apt-keyring.asc
+        mode: "0644"
+      register: kubernetes_apt_key
+
+    - name: Check Kubernetes apt signing key
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: kubernetes_keyring
+
+    - name: Install Kubernetes apt signing key
+      ansible.builtin.command:
+        cmd: gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-apt-keyring.asc
+      when: kubernetes_apt_key.changed or not (kubernetes_keyring.stat.exists | default(false))
+      vars:
+        ansible_command_timeout: 60
+      changed_when: true
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "{{ kubernetes_apt_repository }}"
+        filename: kubernetes
+        state: present
+        update_cache: true
+
+    - name: Install latest Kubernetes packages from selected minor repo
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: true
+      when: kubernetes_package_version | length == 0
+
+    - name: Install pinned Kubernetes packages
+      ansible.builtin.apt:
+        name:
+          - "kubelet={{ kubernetes_package_version }}"
+          - "kubeadm={{ kubernetes_package_version }}"
+          - "kubectl={{ kubernetes_package_version }}"
+        state: present
+        update_cache: true
+      when: kubernetes_package_version | length > 0
+
+    - name: Hold Kubernetes package versions
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Configure kubelet node IP
+      ansible.builtin.copy:
+        dest: /etc/default/kubelet
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          KUBELET_EXTRA_ARGS=--node-ip={{ node_ip | default(ansible_host) }}
+      notify: Restart kubelet
+
+    - name: Enable kubelet
+      ansible.builtin.service:
+        name: kubelet
+        enabled: true
+        state: started
+      failed_when: false
+
+- name: Bootstrap control plane
+  hosts: k8s_masters
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check if control plane is initialized
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: kubeadm_admin_conf
+
+    - name: Initialize Kubernetes control plane
+      ansible.builtin.command:
+        cmd: >
+          kubeadm init
+          --apiserver-advertise-address={{ node_ip | default(ansible_host) }}
+          --apiserver-cert-extra-sans={{ node_ip | default(ansible_host) }}
+          --pod-network-cidr={{ kubernetes_pod_cidr }}
+          --service-cidr={{ kubernetes_service_cidr }}
+          --cri-socket={{ kubernetes_cri_socket }}
+          --node-name={{ inventory_hostname }}
+      when: not kubeadm_admin_conf.stat.exists
+      changed_when: true
+
+    - name: Create kubeconfig directory for SSH user
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0700"
+
+    - name: Copy admin kubeconfig for SSH user
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+        remote_src: true
+
+    - name: Install Calico operator CRDs
+      ansible.builtin.command:
+        cmd: >
+          kubectl --kubeconfig=/etc/kubernetes/admin.conf apply
+          --server-side
+          --force-conflicts
+          -f {{ calico_operator_crd_url }}
+      register: calico_operator_crds
+      changed_when: >
+        'created' in calico_operator_crds.stdout
+        or 'configured' in calico_operator_crds.stdout
+        or 'serverside-applied' in calico_operator_crds.stdout
+
+    - name: Install Tigera operator
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ calico_operator_manifest_url }}
+      register: tigera_operator
+      changed_when: "'created' in tigera_operator.stdout or 'configured' in tigera_operator.stdout"
+
+    - name: Write Calico custom resources
+      ansible.builtin.copy:
+        dest: /tmp/calico-custom-resources.yaml
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          apiVersion: operator.tigera.io/v1
+          kind: Installation
+          metadata:
+            name: default
+          spec:
+            calicoNetwork:
+              ipPools:
+                - name: default-ipv4-ippool
+                  blockSize: 26
+                  cidr: {{ calico_ip_pool_cidr }}
+                  encapsulation: {{ calico_ip_pool_encapsulation }}
+                  natOutgoing: Enabled
+                  nodeSelector: all()
+
+          ---
+          apiVersion: operator.tigera.io/v1
+          kind: APIServer
+          metadata:
+            name: default
+          spec: {}
+
+          ---
+          apiVersion: operator.tigera.io/v1
+          kind: Goldmane
+          metadata:
+            name: default
+
+          ---
+          apiVersion: operator.tigera.io/v1
+          kind: Whisker
+          metadata:
+            name: default
+
+    - name: Install Calico
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /tmp/calico-custom-resources.yaml
+      register: calico_custom_resources
+      changed_when: "'created' in calico_custom_resources.stdout or 'configured' in calico_custom_resources.stdout"
+
+    - name: Create worker join command
+      ansible.builtin.command:
+        cmd: kubeadm token create --print-join-command --ttl 0
+      register: kubeadm_join_command
+      changed_when: false
+
+- name: Join workers
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check if worker already joined
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_conf
+
+    - name: Join worker to cluster
+      ansible.builtin.command:
+        cmd: >
+          {{ hostvars[groups['k8s_masters'][0]].kubeadm_join_command.stdout }}
+          --cri-socket={{ kubernetes_cri_socket }}
+          --node-name={{ inventory_hostname }}
+      when: not kubelet_conf.stat.exists
+      changed_when: true

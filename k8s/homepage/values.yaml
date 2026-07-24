@@ -1,0 +1,49 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/gethomepage/homepage
+  tag: latest
+  pullPolicy: IfNotPresent
+
+env:
+  HOMEPAGE_ALLOWED_HOSTS: "192.168.0.201,192.168.0.201:80"
+  PUID: "1000"
+  PGID: "1000"
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 3000
+  annotations:
+    metallb.io/allow-shared-ip: home-server
+  loadBalancerIP: "192.168.0.201"
+
+config:
+  enabled: true
+  files: {}
+
+persistence:
+  enabled: false
+  existingClaim: ""
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
+dockerSocket:
+  enabled: false
+  path: /var/run/docker.sock
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

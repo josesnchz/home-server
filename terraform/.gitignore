@@ -1,0 +1,9 @@
+**/.terraform/
+**/terraform.tfvars
+**/terraform.tfvars.json
+**/*.auto.tfvars
+**/*.auto.tfvars.json
+**/*.tfstate
+**/*.tfstate.*
+crash.log
+crash.*.log

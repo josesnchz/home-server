@@ -1,0 +1,65 @@
+replicas: 1
+
+image:
+  repository: grafana/grafana
+  tag: latest
+  pullPolicy: IfNotPresent
+
+adminUser: admin
+
+service:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+      metallb.universe.tf/loadBalancerIPs: 192.168.0.200
+  port: 80
+  targetPort: 3000
+  # extraPorts:
+  #   - name: https-fake
+  #     port: 443
+  #     targetPort: 3000
+
+persistence:
+  enabled: false
+  type: pvc
+  size: 5Gi
+  accessModes:
+    - ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+grafana.ini:
+  server:
+    domain: 192.168.0.200
+    root_url: http://192.168.0.200
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+  security:
+    allow_embedding: true
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources: []
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers: []
+
+dashboards: {}
+
+sidecar:
+  dashboards:
+    enabled: false
+  datasources:
+    enabled: false
+
+testFramework:
+  enabled: false

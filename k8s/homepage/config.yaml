@@ -1,0 +1,30 @@
+config:
+  files:
+    settings.yaml: |
+      title: Endurance
+      # description: A description of my awesome homepage
+      background:
+        image: https://wallpaperaccess.com/full/6266970.png
+        blur: xs
+        saturate: 100
+        brightness: 50
+      cardBlur: xs
+      favicon: https://www.google.com/favicon.ico
+      theme: dark
+      color: purple
+
+    services.yaml: |
+      - Mi Grupo:
+          - Google:
+              icon: google
+              href: https://google.com
+
+    bookmarks.yaml: |
+      - Favoritos:
+          - Proxmox:
+              - abbr: PVE
+                href: https://tu-ip-proxmox:8006
+
+    widgets.yaml: |
+      - logo:
+          icon: https://gethomepage.dev/homepage.png

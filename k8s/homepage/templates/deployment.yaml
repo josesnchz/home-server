@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "homepage.fullname" . }}
+  labels:
+    {{- include "homepage.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "homepage.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "homepage.selectorLabels" . | nindent 8 }}
+      {{- if or .Values.config.enabled .Values.podAnnotations }}
+      annotations:
+        {{- if .Values.config.enabled }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    spec:
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.config.enabled }}
+      initContainers:
+        - name: copy-config
+          image: busybox:1.37
+          command:
+            - sh
+            - -ec
+            - cp -R /config-source/. /config/
+          volumeMounts:
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
+            - name: config
+              mountPath: /config
+      {{- end }}
+      containers:
+        - name: homepage
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- range $name, $value := .Values.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+            {{- if .Values.dockerSocket.enabled }}
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-config" (include "homepage.fullname" .)) .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.config.enabled }}
+        - name: config-source
+          configMap:
+            name: {{ include "homepage.fullname" . }}-config
+        {{- end }}
+        {{- if .Values.dockerSocket.enabled }}
+        - name: docker-socket
+          hostPath:
+            path: {{ .Values.dockerSocket.path }}
+            type: Socket
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

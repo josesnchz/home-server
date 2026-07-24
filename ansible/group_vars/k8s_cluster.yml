@@ -1,0 +1,16 @@
+---
+kubernetes_minor_version: "v1.36"
+kubernetes_package_version: ""
+
+kubernetes_pod_cidr: "10.244.0.0/16"
+kubernetes_service_cidr: "10.96.0.0/12"
+kubernetes_cri_socket: "unix:///var/run/containerd/containerd.sock"
+
+calico_version: "v3.32.0"
+calico_operator_crd_url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/v1_crd_projectcalico_org.yaml"
+calico_operator_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/tigera-operator.yaml"
+calico_ip_pool_cidr: "{{ kubernetes_pod_cidr }}"
+calico_ip_pool_encapsulation: "VXLANCrossSubnet"
+
+kubernetes_apt_key_url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/Release.key"
+kubernetes_apt_repository: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/ /"
